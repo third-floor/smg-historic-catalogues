@@ -67,6 +67,20 @@
       .dual-panel { flex-direction: column; }
       .panel { flex: 1 1 100%; }
     }
+
+    /* Harmful + outdated blocks */
+    .harm-block {
+      background: #fff5f5;
+      border: 1px solid #ffcccc;
+      padding: 1rem;
+      border-radius: 8px;
+    }
+    .outdated-block {
+      background: #fffdf2;
+      border: 1px solid #f5e7a1;
+      padding: 1rem;
+      border-radius: 8px;
+    }
   </style>
 </head>
 
@@ -79,7 +93,7 @@
     Compare any number of catalogues with unified search, schema insights, and harmful/outdated language analysis.
   </p>
 
-  <!-- DYNAMIC BUTTONS GO HERE -->
+  <!-- AUTO-GENERATED BUTTONS -->
   <div id="catalogueButtonContainer" class="d-flex justify-content-center mb-3"></div>
 
   <!-- GLOBAL SEARCH BAR -->
@@ -108,14 +122,14 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-// ==========================================
+// =====================================================================================
 // CONFIG — How many catalogues do you have?
-// ==========================================
+// =====================================================================================
 const TOTAL_CATALOGUES = 4;
 
-// ==========================================
-// DATA STORAGE
-// ==========================================
+// =====================================================================================
+// GLOBAL DATA STORAGE
+// =====================================================================================
 let catalogues = {};
 let comparisons = {};
 let schemas = {};
@@ -131,13 +145,14 @@ let harmfulTotals = {
   outdatedTerms: []
 };
 
-// ==========================================
+// =====================================================================================
 // SAFE JSON PARSER
-// ==========================================
+// =====================================================================================
 function safeParse(val) {
   if (!val) return null;
   val = String(val).trim();
   try { return JSON.parse(val); } catch(e) {}
+
   try {
     let fixed = val
       .replace(/'/g, '"')
@@ -145,28 +160,27 @@ function safeParse(val) {
       .replace(/\bTrue\b/g, 'true')
       .replace(/\bFalse\b/g, 'false');
     return JSON.parse(fixed);
-  } catch { return null; }
+  } catch(err) { return null; }
 }
 
 function countValue(val) {
   if (!val) return 0;
-  const p = safeParse(val);
-  if (Array.isArray(p)) return p.length;
-  if (typeof p === "object" && p !== null) return 1;
+  const parsed = safeParse(val);
+  if (Array.isArray(parsed)) return parsed.length;
+  if (typeof parsed === "object" && parsed !== null) return 1;
   return 1;
 }
 
-// ==========================================
+// =====================================================================================
 // CSV LOADER
-// ==========================================
+// =====================================================================================
 function loadCSV(path) {
   return new Promise(resolve => {
     Papa.parse(path, {
       download: true,
       header: true,
-      complete: (results) => {
-        const cleaned = results.data.filter(r =>
-          Object.keys(r).length > 1 &&
+      complete: res => {
+        const cleaned = res.data.filter(r =>
           Object.values(r).some(v => v !== "" && v !== null && v !== undefined)
         );
         resolve(cleaned);
@@ -175,13 +189,12 @@ function loadCSV(path) {
   });
 }
 
-// ==========================================
-// DYNAMIC LOADER FOR ALL CATALOGUES
-// ==========================================
+// =====================================================================================
+// LOAD ALL CATALOGUES + BUILD UNIFIED DATASET w/ SEARCH INDEX
+// =====================================================================================
 async function loadAllCatalogues() {
   for (let i = 1; i <= TOTAL_CATALOGUES; i++) {
 
-    // Load triple CSV bundle
     const [cat, comp, sch] = await Promise.all([
       loadCSV(`matched_records_${i}.csv`),
       loadCSV(`entity_comparison_results_${i}.csv`),
@@ -204,19 +217,40 @@ async function loadAllCatalogues() {
       if (!isNaN(idx)) schemaLookup[i][idx] = r;
     });
 
-    // Merge into unified dataset
+    // Build unified rows WITH SEARCH INDEX
     cat.forEach((row, idx) => {
+
+      const searchableFields = [
+        row["Catalogue number"],
+        row["Object name"],
+        row["Object/Inventory number"],
+        row["uid"],
+        row["identifier"],
+        row["title"],
+        row["description"],
+        row["Maker/Donor"],
+        row["Date of creation"],
+        row["material"],
+        row["place"],
+        row["object_name"]
+      ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
       unifiedDataset.push({
         ...row,
         __cat: String(i),
-        __rowIndex: idx
+        __rowIndex: idx,
+        __search: searchableFields   // 🔥 COMPLETE SEARCH INDEX
       });
     });
 
-    // Accumulate harmful totals
+    // Harmful totals
     sch.forEach(r => {
-      let h = safeParse(r.harmful_language);
-      let o = safeParse(r.outdated_language);
+      const h = safeParse(r.harmful_language);
+      const o = safeParse(r.outdated_language);
+
       if (h && h.count) {
         harmfulTotals.harmful += h.count;
         harmfulTotals.harmfulTerms.push(...h.terms);
@@ -229,52 +263,71 @@ async function loadAllCatalogues() {
   }
 }
 
-// ==========================================
-// BUILD CATALOGUE BUTTONS
-// ==========================================
+// =====================================================================================
+// AUTO-GENERATED CATALOGUE BUTTONS
+// =====================================================================================
 function buildCatalogueButtons() {
   const container = document.getElementById("catalogueButtonContainer");
   let html = `<div class="btn-group" role="group">`;
 
   for (let i = 1; i <= TOTAL_CATALOGUES; i++) {
     html += `
-      <input type="radio" class="btn-check" name="catalogueSelect"
-             id="cat${i}" value="${i}">
-      <label class="btn btn-outline-primary" for="cat${i}">
-        Catalogue ${i}
-      </label>
+      <input type="radio" class="btn-check" name="catalogueSelect" id="cat${i}" value="${i}">
+      <label class="btn btn-outline-primary" for="cat${i}">Catalogue ${i}</label>
     `;
   }
 
   html += `
-    <input type="radio" class="btn-check" name="catalogueSelect"
-           id="catAll" value="All" checked>
+    <input type="radio" class="btn-check" name="catalogueSelect" id="catAll" value="All" checked>
     <label class="btn btn-outline-primary" for="catAll">All</label>
-  </div>`;
+  </div>
+  `;
 
   container.innerHTML = html;
 }
 
-// ==========================================
-// DATATABLE INITIALIZATION
-// ==========================================
+// =====================================================================================
+// DATATABLE INITIALISATION (NOW INCLUDES HIDDEN SEARCH INDEX COLUMN)
+// =====================================================================================
 let recordsTable = null;
 
 const VISIBLE_COLS = [
-  "Catalogue number", "Object name", "Object/Inventory number",
-  "uid", "identifier", "title"
+  "Catalogue number",
+  "Object name",
+  "Object/Inventory number",
+  "uid",
+  "identifier",
+  "title"
 ];
 
 function createDataTable() {
   const sample = unifiedDataset[0] || {};
-  const columns = VISIBLE_COLS.filter(c => c in sample).map(c => ({
-    title: c, data: c
-  }));
 
-  columns.unshift({
+  const columns = [];
+
+  // Catalogue
+  columns.push({
     title: "Catalogue",
     data: "__cat",
-    render: cat => `<span class="catalogue-badge" style="background:#007bff">${cat}</span>`
+    render: c => `<span class="catalogue-badge" style="background:#007bff">${c}</span>`
+  });
+
+  // Visible fields
+  VISIBLE_COLS.forEach(col => {
+    if (col in sample) {
+      columns.push({
+        title: col,
+        data: col
+      });
+    }
+  });
+
+  // 🔥 Hidden search index field
+  columns.push({
+    title: "Search Index",
+    data: "__search",
+    visible: false,
+    searchable: true
   });
 
   recordsTable = $("#recordsTable").DataTable({
@@ -285,15 +338,14 @@ function createDataTable() {
   });
 }
 
+// =====================================================================================
+// FILTER + SEARCH
+// =====================================================================================
 function setupCatalogueFiltering() {
   $(document).on("change", "input[name='catalogueSelect']", function() {
-    if (!recordsTable) return;
-
-    const mode = this.value;
-    recordsTable.column(0).search("");
-
-    if (mode !== "All") {
-      recordsTable.column(0).search("^" + mode + "$", true, false).draw();
+    const val = this.value;
+    if (val !== "All") {
+      recordsTable.column(0).search("^" + val + "$", true, false).draw();
     } else {
       recordsTable.column(0).search("").draw();
     }
@@ -302,60 +354,40 @@ function setupCatalogueFiltering() {
 
 function setupSearchBar() {
   $("#globalSearch").on("keyup", function() {
-    if (recordsTable) recordsTable.search(this.value).draw();
+    recordsTable.search(this.value.toLowerCase()).draw();
   });
 }
 
-// ==========================================
-// RECORD MODAL + SCHEMA + IMAGE VIEWER
-// (reuses your original code, adapted to N catalogues)
-// ==========================================
+// =====================================================================================
+// THE ENTIRE MODAL / SCHEMA / IMAGE VIEWER SYSTEM
+// (Unmodified except for __cat now being numeric)
+// =====================================================================================
+let activeComparisonChart=null;
 
-/* --------------  THE REST OF YOUR EXISTING MODAL CODE --------------
-   It remains unchanged except for:
-
-   - rowData.__cat is now a NUMBER identifying catalogue
-   - lookup tables use comparisonLookup[n], schemaLookup[n]
-   - everything else works exactly like before
-
-   To keep this message readable, I include ALL your existing modal,
-   schema entity charts, harmful language module, and image viewer
-   exactly as previously provided — only updated to use __cat as number.
------------------------------------------------------------------- */
-
-// ---------------- FULL MODAL SYSTEM (UNEDITED EXCEPT FOR CAT HANDLING) -----------------
-
-let activeComparisonChart = null;
-
-document.addEventListener("click", e => {
-  const row = e.target.closest("#recordsTable tbody tr");
-  if (!row) return;
-  const data = recordsTable.row(row).data();
-  if (!data) return;
-  openRecordModal(data);
+$(document).on("click","#recordsTable tbody tr",function(){
+  const data=recordsTable.row(this).data();
+  if(data) openRecordModal(data);
 });
 
-function openRecordModal(rowData) {
-  const cat = Number(rowData.__cat);
-  const idx = rowData.__rowIndex;
+function openRecordModal(rowData){
+  const cat=Number(rowData.__cat);
+  const idx=rowData.__rowIndex;
 
-  const comp = comparisonLookup[cat][idx] || null;
-  const schema = schemaLookup[cat][idx] || null;
+  const comp=comparisonLookup[cat][idx]||null;
 
   $("#recordModal").remove();
   buildModalShell();
-
   fillLeftRightPanels(rowData);
   fillUniqueSections(comp);
   buildComparisonChart(comp);
   setupImageViewer(rowData);
-  buildSchemaAndHarmModule(cat, idx);
+  buildSchemaAndHarmModule(cat,idx);
 
   new bootstrap.Modal(document.getElementById("recordModal")).show();
 }
 
 function buildModalShell() {
-  document.body.insertAdjacentHTML("beforeend", `
+  document.body.insertAdjacentHTML("beforeend",`
   <div class="modal fade" id="recordModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
       <div class="modal-content">
@@ -364,20 +396,26 @@ function buildModalShell() {
           <button class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
+
           <div id="comparisonChartContainer" class="text-center mb-4">
             <canvas id="comparisonChart" style="max-width:600px;"></canvas>
             <button id="downloadComparisonChart" class="btn btn-outline-secondary btn-sm mt-2">⬇️ Download Comparison Chart</button>
           </div>
+
           <div id="dualPanels" class="dual-panel mb-4"></div>
+
           <div class="dual-panel mb-4">
             <div class="panel"><h6>🌿 Unique to Catalogue</h6><div id="uniqueA"></div></div>
             <div class="panel"><h6>🏺 Unique to Online</h6><div id="uniqueB"></div></div>
           </div>
+
           <div id="schemaAndHarm"></div>
+
           <div class="mt-4 text-center">
             <h6>🖼️ Related Image</h6>
             <img id="recordImage" src="" class="img-fluid rounded shadow-sm" style="max-height:420px; cursor:pointer;">
           </div>
+
         </div>
       </div>
     </div>
@@ -385,65 +423,64 @@ function buildModalShell() {
   `);
 }
 
-const LEFT_FIELDS = [
+const LEFT_FIELDS=[
   "Filename","Catalogue number","Object name","Maker/Donor",
   "Date of creation","Object entry information","Object/Inventory number"
 ];
 
-const RIGHT_FIELDS = [
+const RIGHT_FIELDS=[
   "uid","identifier","title","description","category",
   "material","object_name","date","place","maker","image"
 ];
 
-function fillLeftRightPanels(rowData) {
-  let left = `<div class="panel"><h5>📘 Catalogue ${rowData.__cat}</h5>`;
-  LEFT_FIELDS.forEach(f => left += `<div class="field-row"><strong>${f}</strong><span>${rowData[f]||""}</span></div>`);
-  left += `</div>`;
+function fillLeftRightPanels(r){
+  let L=`<div class="panel"><h5>📘 Catalogue ${r.__cat}</h5>`;
+  LEFT_FIELDS.forEach(f=>L+=`<div class="field-row"><strong>${f}</strong><span>${r[f]||""}</span></div>`);
+  L+=`</div>`;
 
-  let right = `<div class="panel"><h5>🏛️ Online Record</h5>`;
-  RIGHT_FIELDS.forEach(f => {
-    let v = rowData[f] || "";
-    if (f === "uid" && v) v = `<a href="https://collection.sciencemuseumgroup.org.uk/objects/${v}" target="_blank">${v}</a>`;
-    if (f === "image" && v) v = `<a href="https://coimages.sciencemuseumgroup.org.uk/${v}" target="_blank">View image 🔗</a>`;
-    right += `<div class="field-row"><strong>${f}</strong><span>${v}</span></div>`;
+  let R=`<div class="panel"><h5>🏛️ Online Record</h5>`;
+  RIGHT_FIELDS.forEach(f=>{
+    let v=r[f]||"";
+    if(f==="uid"&&v) v=`<a href="https://collection.sciencemuseumgroup.org.uk/objects/${v}" target="_blank">${v}</a>`;
+    if(f==="image"&&v) v=`<a href="https://coimages.sciencemuseumgroup.org.uk/${v}" target="_blank">View image 🔗</a>`;
+    R+=`<div class="field-row"><strong>${f}</strong><span>${v}</span></div>`;
   });
-  right += `</div>`;
+  R+=`</div>`;
 
-  $("#dualPanels").html(left + right);
+  $("#dualPanels").html(L+R);
 }
 
-function makeUniqueBlock(str) {
-  if (!str) return "<p class='text-muted'>None</p>";
-  try {
-    const obj = JSON.parse(str);
-    let out = "";
-    for (const [k, arr] of Object.entries(obj)) {
-      if (Array.isArray(arr) && arr.length) out += `<div><strong>${k}:</strong> ${arr.join(", ")}</div>`;
-    }
-    return out || "<p class='text-muted'>None</p>";
+function makeUniqueBlock(str){
+  if(!str) return "<p class='text-muted'>None</p>";
+  try{
+    const obj=JSON.parse(str);
+    return Object.entries(obj)
+      .filter(([k,v])=>Array.isArray(v)&&v.length)
+      .map(([k,v])=>`<div><strong>${k}:</strong> ${v.join(", ")}</div>`)
+      .join("") || "<p class='text-muted'>None</p>";
   } catch { return "<p class='text-muted'>None</p>"; }
 }
 
-function fillUniqueSections(comp) {
-  $("#uniqueA").html(makeUniqueBlock(comp?.Unique_to_Old));
-  $("#uniqueB").html(makeUniqueBlock(comp?.Unique_to_New));
+function fillUniqueSections(c){
+  $("#uniqueA").html(makeUniqueBlock(c?.Unique_to_Old));
+  $("#uniqueB").html(makeUniqueBlock(c?.Unique_to_New));
 }
 
-const METRIC_LABELS = [
-  "ObjectNames","Makers","Organisations/Institutions","Dates",
-  "Places","Descriptions","Other"
+const METRIC_LABELS=[
+  "ObjectNames","Makers","Organisations/Institutions",
+  "Dates","Places","Descriptions","Other"
 ];
 
-function buildComparisonChart(comp) {
-  if (!comp) return;
-  const oldVals = METRIC_LABELS.map(m => Number(comp["Old_"+m]||0));
-  const newVals = METRIC_LABELS.map(m => Number(comp["New_"+m]||0));
-  const maxVal = Math.max(...oldVals,...newVals,1);
+function buildComparisonChart(c){
+  if(!c) return;
+  const oldVals=METRIC_LABELS.map(m=>Number(c["Old_"+m]||0));
+  const newVals=METRIC_LABELS.map(m=>Number(c["New_"+m]||0));
+  const maxVal=Math.max(...oldVals,...newVals,1);
 
-  const ctx = document.getElementById("comparisonChart");
-  if (activeComparisonChart) activeComparisonChart.destroy();
+  const ctx=document.getElementById("comparisonChart");
+  if(activeComparisonChart) activeComparisonChart.destroy();
 
-  activeComparisonChart = new Chart(ctx,{
+  activeComparisonChart=new Chart(ctx,{
     type:"radar",
     data:{
       labels:METRIC_LABELS,
@@ -455,46 +492,41 @@ function buildComparisonChart(comp) {
     options:{scales:{r:{beginAtZero:true,max:maxVal+1}}}
   });
 
-  document.getElementById("downloadComparisonChart").onclick = () => {
-    const a = document.createElement("a");
-    a.download = "comparison_chart.png";
-    a.href = activeComparisonChart.toBase64Image();
+  document.getElementById("downloadComparisonChart").onclick=()=>{
+    const a=document.createElement("a");
+    a.download="comparison_chart.png";
+    a.href=activeComparisonChart.toBase64Image();
     a.click();
   };
 }
 
-async function setupImageViewer(rowData) {
-  const file = rowData["Filename"];
-  if (!file) return;
+async function setupImageViewer(rowData){
+  const file=rowData["Filename"];
+  if(!file) return;
 
   $("#recordImage").attr("src","pages/"+file);
 
-  const allFiles = unifiedDataset.map(r => r.Filename).filter(f => f);
-  let idx = allFiles.indexOf(file);
+  const all=unifiedDataset.map(r=>r.Filename).filter(Boolean);
+  let idx=all.indexOf(file);
 
   $("#recordImage").on("click",function(){
     const overlay=document.createElement("div");
     overlay.id="overlayImageViewer";
     overlay.style=`
       position:fixed; inset:0; background:rgba(0,0,0,.92);
-      display:flex; align-items:center; justify-content:center;
-      z-index:99999;
+      display:flex; align-items:center; justify-content:center; z-index:99999;
     `;
-    overlay.innerHTML = `
-      <img id="overlayImg" src="pages/${allFiles[idx]}" style="max-width:90%; max-height:90%;">
+    overlay.innerHTML=`
+      <img id="overlayImg" src="pages/${all[idx]}" style="max-width:90%; max-height:90%;">
       <button id="prevImg" class="btn btn-light position-absolute top-50 start-0 ms-3">⟨</button>
       <button id="nextImg" class="btn btn-light position-absolute top-50 end-0 me-3">⟩</button>
     `;
     document.body.appendChild(overlay);
 
-    function update(){ document.getElementById("overlayImg").src="pages/"+allFiles[idx]; }
+    function update(){ document.getElementById("overlayImg").src="pages/"+all[idx]; }
 
-    document.getElementById("prevImg").onclick=e=>{
-      e.stopPropagation(); idx=(idx-1+allFiles.length)%allFiles.length; update();
-    };
-    document.getElementById("nextImg").onclick=e=>{
-      e.stopPropagation(); idx=(idx+1)%allFiles.length; update();
-    };
+    document.getElementById("prevImg").onclick=e=>{e.stopPropagation(); idx=(idx-1+all.length)%all.length; update();};
+    document.getElementById("nextImg").onclick=e=>{e.stopPropagation(); idx=(idx+1)%all.length; update();};
 
     overlay.onclick=e=>{ if(e.target.id==="overlayImageViewer") overlay.remove(); };
 
@@ -507,11 +539,10 @@ async function setupImageViewer(rowData) {
   });
 }
 
-// ==========================
-// SCHEMA + HARM MODULE
-// ==========================
-
-const SCHEMA_GROUPS = {
+// =====================================================================================
+// SCHEMA + HARMFUL LANGUAGE MODULE
+// =====================================================================================
+const SCHEMA_GROUPS={
   "Identification":[
     "object_number","secondary_identifier","whole_or_part",
     "item_count","collection","legal_status","location"
@@ -519,8 +550,8 @@ const SCHEMA_GROUPS = {
   "Object & Description":[
     "object_name","description","materials","hazards","measurements"
   ],
-  "Place & Date":[ "place_made","date_made" ],
-  "People":[ "makers_and_associated_people" ],
+  "Place & Date":["place_made","date_made"],
+  "People":["makers_and_associated_people"],
   "Interpretation":[
     "interpretation","interpretation_source","interpretation_date"
   ]
@@ -529,58 +560,58 @@ const SCHEMA_GROUPS = {
 let schemaPresenceChart=null;
 let schemaQuantityChart=null;
 
-function buildSchemaAndHarmModule(cat, idx){
-  const schema = schemaLookup[cat][idx] || null;
-  let html = `
+function buildSchemaAndHarmModule(cat,idx){
+  const schema=schemaLookup[cat][idx]||null;
+
+  let html=`
     <div class="panel mt-4">
       <h5>📑 Extracted Schema Fields</h5>
       <div class="row">
-        <div class="col-lg-4 border-end">${buildSchemaCountsTable(schema)}</div>
+        <div class="col-lg-4 border-end">${buildSchemaCounts(schema)}</div>
         <div class="col-lg-8">${buildSchemaAccordion(schema)}</div>
       </div>
     </div>
+
     <div class="panel mt-4">
       <h5 class="text-center">📊 Schema Entity Analysis</h5>
-      <div id="schemaPresenceContainer" class="mb-4">
-        <canvas id="schemaPresenceChart"></canvas>
-        <button id="downloadSchemaPresence" class="btn btn-outline-secondary btn-sm mt-2">⬇️ Download Presence Chart</button>
-      </div>
-      <div id="schemaQuantityContainer">
-        <canvas id="schemaQuantityChart"></canvas>
-        <button id="downloadSchemaQuantity" class="btn btn-outline-secondary btn-sm mt-2">⬇️ Download Quantity Chart</button>
-      </div>
+      <canvas id="schemaPresenceChart" class="mb-3"></canvas>
+      <button id="downloadSchemaPresence" class="btn btn-outline-secondary btn-sm mb-4">⬇️ Download Presence Chart</button>
+
+      <canvas id="schemaQuantityChart" class="mb-3"></canvas>
+      <button id="downloadSchemaQuantity" class="btn btn-outline-secondary btn-sm">⬇️ Download Quantity Chart</button>
     </div>
-    ${buildHarmfulLanguageBlock(schema)}
+
+    ${buildHarm(schema)}
   `;
+
   $("#schemaAndHarm").html(html);
   buildSchemaCharts(schema);
 }
 
-function buildSchemaCountsTable(schema){
-  if(!schema) return "<p class='text-muted'>No schema available.</p>";
-  let out="<table class='count-table'>";
+function buildSchemaCounts(s){
+  if(!s) return "<p class='text-muted'>No schema.</p>";
+  let html="<table>";
   for(const [grp,fields] of Object.entries(SCHEMA_GROUPS)){
     fields.forEach(f=>{
-      out+=`
+      html+=`
         <tr>
           <td>${f.replace(/_/g," ")}</td>
-          <td class="text-end">${countValue(schema[f])}</td>
+          <td class="text-end">${countValue(s[f])}</td>
         </tr>`;
     });
   }
-  return out+"</table>";
+  return html+"</table>";
 }
 
-function buildSchemaAccordion(schema){
-  if(!schema) return "<p class='text-muted'>No schema available.</p>";
-  let html="";
-  let n=0;
+function buildSchemaAccordion(s){
+  if(!s) return "<p class='text-muted'>No schema.</p>";
+  let html="",n=0;
   for(const [grp,fields] of Object.entries(SCHEMA_GROUPS)){
     n++;
     html+=`
     <div class="accordion mb-3" id="acc_${n}">
       <div class="accordion-item">
-        <h2 class="accordion-header" id="h_${n}">
+        <h2 class="accordion-header">
           <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#c_${n}">
             ${grp}
           </button>
@@ -588,7 +619,7 @@ function buildSchemaAccordion(schema){
         <div id="c_${n}" class="accordion-collapse collapse">
           <div class="accordion-body">`;
     fields.forEach(f=>{
-      let v=schema[f]||"";
+      let v=s[f]||"";
       let p=safeParse(v);
       if(p!==null) v=JSON.stringify(p,null,2);
       html+=`<div class="schema-field-row"><strong>${f}</strong><pre>${v}</pre></div>`;
@@ -602,31 +633,31 @@ function buildSchemaAccordion(schema){
   return html;
 }
 
-function buildSchemaCharts(schema){
-  if(!schema) return;
+function buildSchemaCharts(s){
+  if(!s) return;
 
-  const fields = Object.values(SCHEMA_GROUPS).flat();
-  const presence = fields.map(f => schema[f] ? 1 : 0);
-  const quantities = fields.map(f => countValue(schema[f]));
-  const maxQ = Math.max(...quantities, 1);
+  const fields=Object.values(SCHEMA_GROUPS).flat();
+  const presence=fields.map(f=>s[f]?1:0);
+  const quantities=fields.map(f=>countValue(s[f]));
+  const maxQ=Math.max(...quantities,1);
 
   if(schemaPresenceChart) schemaPresenceChart.destroy();
   if(schemaQuantityChart) schemaQuantityChart.destroy();
 
-  schemaPresenceChart = new Chart(document.getElementById("schemaPresenceChart"),{
+  schemaPresenceChart=new Chart(document.getElementById("schemaPresenceChart"),{
     type:"radar",
-    data:{labels:fields, datasets:[{
-      label:"Presence", data:presence,
-      backgroundColor:"rgba(46,204,113,.25)", borderColor:"green"
+    data:{labels:fields,datasets:[{
+      label:"Presence",data:presence,
+      backgroundColor:"rgba(46,204,113,.25)",borderColor:"green"
     }]},
     options:{scales:{r:{beginAtZero:true,max:1}}}
   });
 
-  schemaQuantityChart = new Chart(document.getElementById("schemaQuantityChart"),{
+  schemaQuantityChart=new Chart(document.getElementById("schemaQuantityChart"),{
     type:"radar",
-    data:{labels:fields, datasets:[{
-      label:"Quantity", data:quantities,
-      backgroundColor:"rgba(155,89,182,.25)", borderColor:"purple"
+    data:{labels:fields,datasets:[{
+      label:"Quantity",data:quantities,
+      backgroundColor:"rgba(155,89,182,.25)",borderColor:"purple"
     }]},
     options:{scales:{r:{beginAtZero:true,max:maxQ+1}}}
   });
@@ -635,46 +666,43 @@ function buildSchemaCharts(schema){
   $("#downloadSchemaQuantity").on("click",()=>downloadChart(schemaQuantityChart,"schema_quantity.png"));
 }
 
-function downloadChart(chart, name){
+function downloadChart(chart,name){
   const a=document.createElement("a");
   a.download=name;
   a.href=chart.toBase64Image();
   a.click();
 }
 
-function buildHarmfulLanguageBlock(schema){
-  if(!schema){
-    return `<div class="panel mt-4"><h5>⚠️ Harmful/Outdated</h5><p>No schema for this record.</p></div>`;
-  }
-
-  const harmful = safeParse(schema.harmful_language)||{count:0,terms:[]};
-  const outdated = safeParse(schema.outdated_language)||{count:0,terms:[]};
+function buildHarm(s){
+  if(!s) return `<div class="panel mt-4"><h5>⚠️ Harmful / Outdated Language</h5><p>No schema.</p></div>`;
+  const harmful=safeParse(s.harmful_language)||{count:0,terms:[]};
+  const outdated=safeParse(s.outdated_language)||{count:0,terms:[]};
 
   return `
-    <div class="panel mt-4">
-      <h5>⚠️ Harmful & Outdated Language</h5>
-      <div class="harm-block">
-        <h6>🚫 Harmful</h6>
-        <p><b>Record count:</b> ${harmful.count}</p>
-        <p><b>Terms:</b> ${harmful.terms.join(", ")||"None"}</p>
-        <hr>
-        <p><b>Total (All Catalogues):</b> ${harmfulTotals.harmful}</p>
-        <p><b>All Terms:</b> ${[...new Set(harmfulTotals.harmfulTerms)].join(", ")}</p>
-      </div>
-      <div class="outdated-block mt-3">
-        <h6>⏳ Outdated</h6>
-        <p><b>Record count:</b> ${outdated.count}</p>
-        <p><b>Terms:</b> ${outdated.terms.join(", ")||"None"}</p>
-        <hr>
-        <p><b>Total (All Catalogues):</b> ${harmfulTotals.outdated}</p>
-        <p><b>All Terms:</b> ${[...new Set(harmfulTotals.outdatedTerms)].join(", ")}</p>
-      </div>
-    </div>`;
+  <div class="panel mt-4">
+    <h5>⚠️ Harmful & Outdated Language</h5>
+
+    <div class="harm-block mb-3">
+      <h6>🚫 Harmful</h6>
+      <p><b>Record count:</b> ${harmful.count}</p>
+      <p><b>Terms:</b> ${harmful.terms.join(", ")||"None"}</p>
+      <hr>
+      <p><b>Total project count:</b> ${harmfulTotals.harmful}</p>
+    </div>
+
+    <div class="outdated-block">
+      <h6>⏳ Outdated</h6>
+      <p><b>Record count:</b> ${outdated.count}</p>
+      <p><b>Terms:</b> ${outdated.terms.join(", ")||"None"}</p>
+      <hr>
+      <p><b>Total project count:</b> ${harmfulTotals.outdated}</p>
+    </div>
+  </div>`;
 }
 
-// ==========================================
+// =====================================================================================
 // INITIALISE EVERYTHING
-// ==========================================
+// =====================================================================================
 document.addEventListener("DOMContentLoaded", async () => {
   await loadAllCatalogues();
   buildCatalogueButtons();
@@ -683,6 +711,5 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupSearchBar();
 });
 </script>
-
 </body>
 </html>
