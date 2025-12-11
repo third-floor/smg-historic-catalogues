@@ -81,6 +81,17 @@
       padding: 1rem;
       border-radius: 8px;
     }
+    /* Horizontally scrollable catalogue button bar */
+    #catalogueButtonContainer {
+      overflow-x: auto;
+      white-space: nowrap;
+      padding-bottom: .5rem;
+    }
+
+    #catalogueButtonContainer .btn-group {
+      flex-wrap: nowrap;
+      white-space: nowrap;
+    }
   </style>
 </head>
 
@@ -94,7 +105,7 @@
   </p>
 
   <!-- AUTO-GENERATED BUTTONS -->
-  <div id="catalogueButtonContainer" class="d-flex justify-content-center mb-3"></div>
+  <div id="catalogueButtonContainer" class="mb-3"></div>
 
   <!-- GLOBAL SEARCH BAR -->
   <div class="mb-3 d-flex justify-content-center">
@@ -268,7 +279,9 @@ async function loadAllCatalogues() {
 // =====================================================================================
 function buildCatalogueButtons() {
   const container = document.getElementById("catalogueButtonContainer");
-  let html = `<div class="btn-group" role="group">`;
+
+  // Use d-inline-flex so the button group grows horizontally without wrapping
+  let html = `<div class="btn-group d-inline-flex" role="group">`;
 
   for (let i = 1; i <= TOTAL_CATALOGUES; i++) {
     html += `
@@ -277,6 +290,7 @@ function buildCatalogueButtons() {
     `;
   }
 
+  // Add "All" at the end
   html += `
     <input type="radio" class="btn-check" name="catalogueSelect" id="catAll" value="All" checked>
     <label class="btn btn-outline-primary" for="catAll">All</label>
