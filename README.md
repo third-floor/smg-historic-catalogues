@@ -10,3 +10,8 @@ Catalogues currently included
 
 4/D - Stationary Engines (1925)
 
+5 - Geodesy and Surveying (1925)
+
+6 - Meteorology (1922)
+
+7 - Aeronautics (1922)
